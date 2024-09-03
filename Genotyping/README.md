@@ -1,0 +1,1 @@
+# Generating SNP data for population genomic analyses
