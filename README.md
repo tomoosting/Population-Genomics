@@ -35,3 +35,5 @@ analyses include
 9. Identification of hybrids
 10. Genomescan
 
+If you end up using any of this code, please cite ...
+
