@@ -1,0 +1,1 @@
+Expected data structure when running scripts in this repository
