@@ -1,0 +1,482 @@
+---
+title: "admixture_new"
+author: "Tom Oosting"
+date: "2024-06-28"
+output: html_document
+---
+
+#load packages
+```{r include=FALSE}
+###general 
+library(tidyverse)
+library(stringr)
+library(glue)
+
+###plotting
+library(ggplot2)
+library(ggsignif)
+library(RColorBrewer)
+library(ggsci)
+library(scales)
+
+#genetic data
+library(gdsfmt)
+library(SNPRelate)
+
+source("D:/Research/Scripts/R/functions/Rfunctions_population_analyses.R")
+```
+
+#PATHS to input - if everything is correct you can run the whole script after this section
+```{r}
+#input
+project       <- "snapper"
+data_set      <- "snapper_norm"
+filter        <- "neutral"
+iterations    <- 10000
+sample_file   <- glue("D:/Research/Projects/snapper/01_sample_information/{project}.sample_info.tsv")
+SNP_ext       <- glue("D:/Research/Projects/snapper/05_data/{data_set}/{data_set}_{filter}")
+
+
+#output
+admixture_output <- glue("D:/Research/Projects/{project}/06_output/{data_set}/admixture/{data_set}_{filter}_{iterations}_iterations/output/{data_set}_{filter}")
+admixture_plots  <- glue("D:/Research/Projects/{project}/06_output/{data_set}/admixture/{data_set}_{filter}_{iterations}_iterations")
+```
+
+#load data
+```{r}
+#read gds snprelate
+gds <- snpgdsReadGDS(gds_file = paste0(SNP_ext,".gds")) #gdsfmt::closefn.gds(gds) if you need to close the gds file
+#extract locus information
+bim <- snpgdsSNPsum(gds = gds, extended = FALSE)
+
+#Sample information and population information
+sample_info <- read_tsv(sample_file)
+samples <- read.gdsn(index.gdsn(gds, "sample.id"))
+sample_info <- sample_info %>% filter(IND %in% samples) %>% dplyr::arrange(IND) %>% mutate(LEGEND = paste0(POP," (",POP_CODE,")"))
+sample_info <- sample_info[match(samples, sample_info$IND),]
+#this needs to be TRUE!
+identical(samples, sample_info$IND)
+
+#get population metrics
+pops  <- sort(unique(sample_info$POP))
+Npops <- length(pops)
+```
+
+```{r}
+###create POP factors to control order of plotting
+###deault is alphabetical but you can change the order to, for instance, group certain geographically similar sample locations.
+###check current order:
+#snapper norm
+factor_ord  <- c(8,12,9,7,13,11,2,10,5,1,3,4,6)
+pops_ord    <- c("Karamea Bight","Tasman Bay","Marlborough Sounds","Kapiti Coast","West Coast","Northland West","Cape Reinga","Northland East","Hauraki Gulf","Bay of Plenty","East Cape","Gisborne","Hawke's Bay")
+codes_ord   <- c("KB","TB","MB","KC","WC","NW","CR","NE","HG","BP","EC","GB","HB")
+legend_ord  <- paste0(pops_ord," (",codes_ord,")")
+cluster_ord <- c("East","West")
+
+#set factors
+sample_info$POP             <- factor(sample_info$POP            , levels = pops_ord ) #norm23
+sample_info$POP_CODE        <- factor(sample_info$POP_CODE       , levels = codes_ord)
+sample_info$LEGEND          <- factor(sample_info$LEGEND         , levels = legend_ord)
+sample_info$GENETIC_CLUSTER <- factor(sample_info$GENETIC_CLUSTER, levels = cluster_ord)
+sample_info$CLUSTER_GEO     <- factor(sample_info$CLUSTER_GEO    , levels = cluster_ord)
+sample_info$CLUSTER_GEN     <- factor(sample_info$CLUSTER_GEN    , levels = cluster_ord)
+#create new order for samples based on factor levels created above, for admixture
+sample_info$ORD <- order_INDS(IND = sample_info$IND, FACTOR = sample_info$POP)
+
+
+#files
+admix_output <- list.files(dirname(admixture_output),".Q$", full.names = TRUE)
+ord_vec <- order(sample_info$POP, sample_info$LATH_seascape)
+samples_ord <- sample_info[ord_vec,]
+samples_ord$POP_CODE <- as.character(samples_ord$POP_CODE)
+
+```
+
+#set colors and shapes 
+```{r}
+#here you can set colors for all analyses and they will be constant throughout all figures for consistency 
+hex_codes <- hue_pal()(Npops)
+shapes     <- c(rep(c(15,16,17,18),10))[1:Npops]
+show_col(hex_codes)      
+pop_cols <- sample_info   %>% 
+            group_by(POP) %>% 
+            summarise(N = n()) %>% 
+            mutate(color = hex_codes,
+                   shape = shapes)
+colors <- pop_cols$color
+shapes <- pop_cols$shape
+
+col_East <- pal_nejm("default")(5)[c(1)]
+col_West <- pal_nejm("default")(5)[c(2)]
+
+cluster_cols  <- scale_color_manual(values = pal_nejm("default")(5)[c(1:4)]) 
+comparison_cols <- scale_color_manual(values = pal_npg("nrc")(5)[c(3)]) 
+```
+
+# Crossvalidation
+```{r}
+CVfile <- paste0(dirname(admixture_output),"/cross_validation.txt")
+
+cross_K     <- as.numeric(str_replace_all(read_lines(CVfile),"^CV.*=(\\d*)\\): (\\d\\.\\d*)","\\1" ))
+cross_error <- as.numeric(str_replace_all(read_lines(CVfile),"^CV.*=(\\d*)\\): (\\d\\.\\d*)","\\2" ))
+cross_df <- data.frame(K = cross_K,error = cross_error) %>% arrange(K)
+Kmin <-  which(cross_error == min(cross_error))  
+
+png(paste0(admixture_plots,"/cross_validation.png"), width = 12, height = 6, units = "in", res = 300)
+  plot(x    = cross_df$K ,
+       y    = cross_df$error,
+       col  = "black",
+       pch  = 16,
+       type = "b",
+       xlab = "K (Populations)",
+       ylab = "Cross Validation (CV) Error",
+       xaxt = "n",
+       main = "Admixture Cross Valiadation")
+  points(x=cross_K[Kmin],cross_error[Kmin],col = "red", pch = 16)
+  axis(1, at = cross_K, labels = cross_K)
+dev.off()
+```
+
+#plot admixture results
+```{r}
+#i <- admix_output[2]
+for(i in admix_output){
+  #load Q file
+  admix = as.matrix(read.table(i)[ord_vec,])
+  
+  #get colors
+  colors_i <- colors[1:ncol(admix)]
+  if(ncol(admix) == 2){colors_i <- c(col_East,col_West)}
+  
+  #determine order samples
+  pops <- samples_ord$POP_CODE
+  pops_o <- order(pops)
+  
+  #ordered by pop 
+  ord <- orderInds(pop = as.vector(pops))  
+  #ordered by pop and admixture likelyhood
+  #ord <- orderInds(pop = as.vector(pops), q = admix)
+  
+  #get x-axis text
+  text_loc <- sort(as.numeric(as.character(tapply(1:nrow(admix),pops[ord],mean))))
+  
+  #make admixture plot
+  png(glue::glue("{admixture_plots}/{basename(i)}.png"), width = 12, height = 3.3, units = "in", res = 300)
+    par(mar=c(6,4,2,1))
+    barplot(t(admix)[,ord],col=colors_i,names=NULL,xaxt="n", las=2,ylab="Admixture proportions",cex.names=0.75, space = 0, border = NA) #, main = basename(i))
+    text(text_loc,-0.05,unique(pops[ord]),xpd=T, adj = 0.5, srt = 0)
+    abline(v=cumsum(sapply(unique(pops[ord]),function(x){sum(pops[ord]==x)})),col=1,lwd=1,xpd = F)
+  dev.off()
+  
+  pdf(glue::glue("{admixture_plots}/{basename(i)}.pdf"), width = 12, height = 3.3)
+    par(mar=c(6,4,2,1))
+    barplot(t(admix)[,ord],col=colors_i,names=NULL,xaxt="n", las=2,ylab="Admixture proportions",cex.names=0.75, space = 0, border = NA) #, main = basename(i))
+    text(text_loc,-0.05,unique(pops[ord]),xpd=T, adj = 0.5, srt = 0)
+    abline(v=cumsum(sapply(unique(pops[ord]),function(x){sum(pops[ord]==x)})),col=1,lwd=3,xpd = F)
+  dev.off()
+  
+  svg(glue::glue("{admixture_plots}/{basename(i)}.svg"), width = 12, height = 3.3)
+    par(mar=c(6,4,2,1))
+    barplot(t(admix)[,ord],col=colors_i,names=NULL,xaxt="n", las=2,ylab="Admixture proportions",cex.names=0.75, space = 0, border = NA) #, main = basename(i))
+    text(text_loc,-0.05,unique(pops[ord]),xpd=T, adj = 0.5, srt = 0)
+    abline(v=cumsum(sapply(unique(pops[ord]),function(x){sum(pops[ord]==x)})),col=1,lwd=3,xpd = F)
+  dev.off()
+  
+  ##plot results avaladmix
+  #j = str_replace(i,"Q$","evaladmix")
+  #admix_mat <- as.matrix(read.table(j))
+  #png(glue::glue("{admixture_plots}/{basename(i)}_evaladmix.png"), width = 12, height = 12, units = "in", res = 300)
+  #  plotCorRes(cor_mat = admix_mat,
+  #             pop     = pops,
+  #             ord     = ord,
+  #             title   = j  ,
+  #             max_z   = 0.01,
+  #             min_z   =-0.01)
+  #dev.off()
+}
+```
+
+
+
+```{r, fig.height=6, fig.width=20}
+Q2 <- as.data.frame(read.table(admix_output[2]))
+
+Q2 <- cbind(dplyr::select(sample_info, IND), Q2)
+colnames(Q2) <- c("IND","NE","SW")
+
+Q2_long       <- pivot_longer(Q2, cols = colnames(Q2[,2:ncol(Q2)]), names_to = "Cluster", values_to = "Prob")
+Q2_long$Cluster <- factor(Q2_long$Cluster, levels = c("SW","NE"))
+colors <- c("#0072b5ff","#bc3c29ff")
+Q2_long       <- left_join(Q2_long,sample_info[,c(2,3,9)])
+
+Q2_long_grouped <- Q2_long %>% dplyr::arrange(POP, IND)
+IND_Ord <-  unique(Q2_long_grouped$IND )
+Q2_long_grouped$IND <- factor(Q2_long_grouped$IND, levels = IND_Ord)
+
+sample_sum <- sample_info %>% group_by(POP_CODE) %>% summarise(N = n()) %>% mutate(bar = cumsum(N)+.5, text_x = cumsum(N)-(N/2))
+
+ggplot(data = Q2_long_grouped,aes(y=Prob, x= IND))+
+  geom_col(aes(fill = Cluster, color = Cluster),position = position_stack(reverse = TRUE))+
+  geom_segment(data = sample_sum, aes(x = bar, y = -0.05, yend = 1), size = 1.5)+
+  coord_cartesian(ylim = c(-0.05,1), expand = FALSE)+
+  geom_text(data = sample_sum, aes(x = text_x , y = -0.02, label = POP_CODE), size = 6)+
+  scale_fill_manual(values = colors)+
+  scale_color_manual(values = colors)+
+  ylab("Admixture Proportions")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.y = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        legend.position = "bottom")
+ggsave(filename = glue("{admixture_plots}/{data_set}_q2_ggplot.png"), width = 20, height = 5, dpi = 600)
+ggsave(filename = glue("{admixture_plots}/{data_set}_q2_ggplot.svg"), width = 20, height = 5 )
+ggsave(filename = glue("{admixture_plots}/{data_set}_q2_ggplot.pdf"), width = 20, height = 5 )
+
+
+write_tsv(Q2_df, file = glue("{admixture_plots}/{data_set}_q2_df.tsv"))
+
+```
+
+```{r}
+
+Q2_df$ADMIX_POP <- as.character(Q2_df$CLUSTER_GEO)
+Q2_df$ADMIX_POP[which(Q2_df$POP_CODE %in% c("GB","HB","CR"))] <- "MIX"
+
+ggplot(Q2_df, aes(x=East, fill=ADMIX_POP , group = ADMIX_POP))+
+  geom_density(alpha = 0.5)+
+  theme_bw()
+
+ggplot(Q2_df, aes(x=East, fill=CLUSTER_GEO , group = CLUSTER_GEO))+
+  geom_density(alpha = 0.5)+
+  theme_bw()
+
+ggplot(Q2_df, aes(x=East, fill=CLUSTER_GEN , group = CLUSTER_GEN))+
+  geom_density(alpha = 0.5)+
+  theme_bw()
+
+```
+
+
+admixture analysis for k=2
+```{r}
+
+Q2 <- as.data.frame(read.table(admix_output[2]))
+colnames(Q2) <- c("East","West")
+Q2_df <- cbind(sample_info, Q2) 
+Q2_df$min_ancestry <- apply(Q2, 1, FUN = min)
+Q2_df$max_ancestry <- apply(Q2, 1, FUN = max)
+#Q2_df$
+
+
+ggplot(Q2_df, aes(x=East, fill=CLUSTER_GEO , group = CLUSTER_GEO))+
+  geom_density(alpha = 0.7)+
+  scale_fill_manual(values = c(col_East,col_West))+
+  theme_bw()
+ggsave(filename = glue("{admixture_plots}/{data_set}_admixture_proportions_by_geographic_locations_density.png"), dpi = 600)
+ggsave(filename = glue("{admixture_plots}/{data_set}_admixture_proportions_by_geographic_locations_density.svg"))
+ggsave(filename = glue("{admixture_plots}/{data_set}_admixture_proportions_by_geographic_locations_density.pdf"))
+
+
+#Density plot of admixture proportions to the East cluster
+#groups assigned by geography
+ggplot(Q2_df, aes(x=East, fill = CLUSTER_GEO))+
+  geom_histogram(binwidth = 0.05, boundary = 0.05)+
+  #geom_density(stat = "density", alpha = .5)+
+  geom_vline(xintercept = c(0.1,0.25,0.5,0.75,0.9))+
+  scale_fill_manual(values = c(col_East,col_West))+
+  ggtitle("admixture proportions to East cluster, color shows geographic location")+
+  theme_bw()
+ggsave(filename = glue("{admixture_plots}/{data_set}_admixture_proportions_by_geographic_locations.png"), dpi = 600)
+ggsave(filename = glue("{admixture_plots}/{data_set}_admixture_proportions_by_geographic_locations.svg"))
+ggsave(filename = glue("{admixture_plots}/{data_set}_admixture_proportions_by_geographic_locations.pdf"))
+
+#Density plot of admixture proportions to the East cluster
+#groups assigned by admxiture proportions
+ggplot(Q2_df, aes(x=East, fill = CLUSTER_GEN))+
+  geom_histogram(binwidth = 0.05, boundary = 0.05)+
+  #geom_density(stat = "density", alpha = .5)+
+  scale_fill_manual(values = c(col_East,col_West))+
+  geom_vline(xintercept = c(0.1,0.25,0.5,0.75,0.9))+
+  ggtitle("admixture proportions to East cluster, color shows cluster assignment")+
+  theme_bw()
+ggsave(filename = glue("{admixture_plots}/{data_set}_admixture_proportions_by_genetic_assignment.png"), dpi = 600)
+ggsave(filename = glue("{admixture_plots}/{data_set}_admixture_proportions_by_genetic_assignment.svg"))
+ggsave(filename = glue("{admixture_plots}/{data_set}_admixture_proportions_by_genetic_assignment.pdf"))
+
+#density plot for minimum ancestry values
+ggplot(Q2_df, aes(x = min_ancestry))+
+  #geom_density(stat = "density",fill = "darkgreen", alpha = 0.7)+
+  geom_histogram(binwidth = 0.02, boundary = 0.02 ,fill = "darkgreen")+
+  geom_vline(xintercept = 0.25, linetype = "dashed")+
+  xlab("Minimum Admixture proportion")+
+  ylab("Count")+
+  theme_bw()
+ggsave(filename = glue("{admixture_plots}/{data_set}_hist_minimum_admixture_proportions.png"), dpi = 600)
+ggsave(filename = glue("{admixture_plots}/{data_set}_hist_minimum_admixture_proportions.svg"))
+ggsave(filename = glue("{admixture_plots}/{data_set}_hist_minimum_admixture_proportions.pdf"))
+
+
+#reassign IND to mxing area
+#min_ancestry values of > 0.3 suggest admixed individuals
+Q2_df$ADMIX_CLUST <- Q2_df$CLUSTER_GEO
+Q2_df$ADMIX_CLUST[which(Q2_df$POP %in% c("Gisborne","Hawke's Bay","Cape Reinga"))] <- "MIXING AREA"
+
+ggplot(Q2_df, aes(x=East, fill = ADMIX_CLUST))+
+  geom_density(stat = "density", alpha = .5)+
+  scale_fill_manual(values = c(col_East,"purple",col_West))+
+  theme_bw()
+
+Q2_df$IND[which(Q2_df$min_ancestry < 0.10)]
+
+#classify all individuals
+Q2_df$ADMIX_ID <- NA
+#pure individuals that have >= 90% max ancestry
+Q2_df$ADMIX_ID[which(Q2_df$East >  0.9)] <- "pure_East"
+Q2_df$ADMIX_ID[which(Q2_df$West >  0.9)] <- "pure_West"
+Q2_df$ADMIX_ID[which(Q2_df$West <= 0.9 & Q2_df$West >  0.7 )] <- "West"
+Q2_df$ADMIX_ID[which(Q2_df$East <= 0.9 & Q2_df$East >  0.7 )] <- "East"
+Q2_df$ADMIX_ID[which(Q2_df$East <= 0.75 & Q2_df$West <= 0.75 )] <- "Hybrid"
+
+#classify migrants
+#for now... individuals with max_ancestry > 0.7 and sampled in the other region
+Q2_df$MIGRANT <- NA
+Q2_df$MIGRANT[which(Q2_df$max_ancestry > 0.75 & Q2_df$CLUSTER_GEO != Q2_df$CLUSTER_GEN )] <- "MIGRANT"
+Q2_df$MIGRANT[which(Q2_df$max_ancestry <= 0.75 & Q2_df$CLUSTER_GEO != Q2_df$CLUSTER_GEN )] <- "HYBRID_MIGRANT"
+write_tsv(Q2_df, file = glue("{admixture_plots}/summary_table.tsv"))
+
+ggplot(Q2_df, aes(x=East, fill = ADMIX_ID))+
+  #geom_density(stat = "density", alpha = .5)+
+  geom_histogram(binwidth = 0.05, boundary = 0.05 )+
+  #scale_fill_manual(values = c(col_East,col_West))+
+  geom_vline(xintercept = c(0.1,0.25,0.5,0.75,0.9))+
+  theme_bw()
+
+Hybrids <- Q2_df %>% dplyr::filter(ADMIX_ID == "Hybrid")
+
+#### summarise admix proportions by site
+```
+
+#Q2 summary
+```{r, fig.width=8, fig.height=2}
+Q2_site_sum <- Q2_df %>% group_by(POP_CODE) %>% summarise(N    = n(),
+                                                          West = mean(West),
+                                                          East = mean(East))
+Q2_sd <- Q2_df %>% group_by(POP_CODE) %>% summarise(N = n(),sd = sd(West)) %>% mutate(se = sd/sqrt(N))
+Q2_site_sum <- left_join(Q2_site_sum,Q2_sd)
+
+
+dist_boundaries <- c(1064,2043)
+Q2_site_sum$dist_trans <- c(0,170,246,322,703,970,1129,1395,1482,1652,1848,1996,2145)
+
+
+ggplot(Q2_site_sum, aes(x=POP_CODE,y=East))+
+  geom_errorbar(aes(ymin = East - se, ymax = East + se, width = 0.2)) +
+  geom_point(aes(color = POP_CODE), size = 4) +
+  #geom_hline(yintercept = c(0.1,0.9), color = "red")+
+  geom_hline(yintercept = c(0.25,0.75), color = "red", linetype = "dashed")+
+  xlab("sampling site")+
+  ylab("mean ancestry East") +
+  theme_bw() #+ theme(legend.position = 'bottom')nk
+ggsave(filename = glue("{admixture_plots}/{data_set}_mean_admixture_proportions.png"), dpi = 600, width = 10, height = 2)
+ggsave(filename = glue("{admixture_plots}/{data_set}_mean_admixture_proportions.svg"), width = 10, height = 2)
+ggsave(filename = glue("{admixture_plots}/{data_set}_mean_admixture_proportions.pdf"), width = 10, height = 2)
+
+
+ggplot(Q2_site_sum, aes(x=dist_trans,y=East))+
+  geom_point(aes(color = POP_CODE), size = 3) +
+  geom_errorbar(aes(ymin = East - se, ymax = East + se)) +
+  #geom_hline(yintercept = c(0.1,0.9), color = "red")+
+  geom_vline(xintercept = c(1064,2043), linetype = "dashed")+
+  geom_hline(yintercept = c(0.25,0.75), color = "red", linetype = "dashed")+
+  xlab("disance in km along transect")+
+  ylab("mean ancestry East") +
+  theme_bw() #+ theme(legend.position = 'bottom')nk
+ggsave(filename = glue("{admixture_plots}/{data_set}_mean_admixture_proportions_transect.png"), dpi = 600, width = 10, height = 2)
+ggsave(filename = glue("{admixture_plots}/{data_set}_mean_admixture_proportions_transect.svg"), width = 10, height = 2)
+ggsave(filename = glue("{admixture_plots}/{data_set}_mean_admixture_proportions_transect.pdf"), width = 10, height = 2)
+
+
+```
+
+
+#can I get the stronest gradient in ancetry levels between SITES
+```{r}
+############################################################  
+#Introgression for Ki
+Ki <- 5 #K populations (only tested for K=2)
+Qi <- 1 #which column in Q_file is the source population
+ADMIX_frac <- 0.75
+SOURCE <- "East"
+
+#load files
+Q_file <- read_delim(glue("{admixture_ext}.{Ki}.Q"), delim = " ",col_names = FALSE) %>% as.tibble()
+colnames(Q_file) <- paste0("Q",1:Ki)
+se_file <- read_delim(glue("{admixture_ext}.{Ki}.Q_se"), delim = " ",col_names = FALSE) %>% as.tibble()
+colnames(se_file) <- paste0("se",1:Ki)  
+
+#collect information to dataframe
+INTRGR <- data.frame(IND      = sample_info$IND,
+                     POP      = sample_info$POP,
+                     CODE     = sample_info$POP,
+                     CLUSTER  = sample_info$GENETIC_CLUSTER,
+                     LATH     = sample_info$GPS_LATH,
+                     LONG     = sample_info$GPS_LONG,
+                     Q        = Q_file[,Qi],
+                     se       = se_file[,Qi],
+                     QMAX     = apply(Q_file,1, function(x){max(x)})) %>% as.tibble() %>% dplyr::arrange(POP)
+colnames(INTRGR) <- c("IND","POP","CODE","CLUSTER","LATH","LONG","Q","se","QMAX")
+INTRGR <- INTRGR %>% mutate(MIN=Q-se, MAX=Q+se, POS=1:nrow(INTRGR))
+write_tsv(x = INTRGR, file = glue("{admixture_ext}_K{Ki}_introgression.tsv"))
+
+#determine which sample are admixed
+SOURCE_ADMIXED <- INTRGR %>% dplyr::filter(CLUSTER == SOURCE, Q <   ADMIX_frac) %>% dplyr::select(POS)
+SINK_ADMIXED   <- INTRGR %>% dplyr::filter(CLUSTER != SOURCE, Q > (1-ADMIX_frac)) %>% dplyr::select(POS)
+ADMIXED <- sort(c(SOURCE_ADMIXED$POS,SINK_ADMIXED$POS))
+ADMIXED_IND <- INTRGR$IND[ADMIXED] %>% sort()
+
+#create plot
+ggplot(data = INTRGR, aes(x=POS,y=Q,color=POP)) + 
+  geom_point(aes(shape=POP),size=2)+
+  geom_errorbar(aes(ymin=MIN,ymax=MAX)) +
+  labs(x="Individuals", y = "East cluster ancestry") +
+  #geom_vline(xintercept =  c(159.5,362.5), linetype = "longdash") +
+  scale_shape_manual(values = shapes) +
+  scale_x_continuous(expand = c(0.001, 0.001)) +
+  theme_bw() +
+  theme(legend.position   = "bottom",
+        legend.title      = element_blank(),
+        legend.background = element_rect(fill="transparent"),
+        legend.text       = element_text(size=11), 
+        axis.text.y       = element_text(size=12), 
+        axis.title.y      = element_text(size=14),
+        axis.title.x      = element_blank(),
+        axis.ticks.x      = element_blank(),
+        axis.text.x       = element_blank()) + 
+  guides(colour = guide_legend(nrow = 2)) 
+ggsave(filename = glue("{admixture_ext}_K{Ki}_introgression_2.png") , width = 12, height = 3.3, dpi = 300)
+ggsave(filename = glue("{admixture_ext}_K{Ki}_introgression_2.pdf") , width = 12, height = 3.3, dpi = 300)
+
+ggplot(data = INTRGR, aes(x=POS,y=Q,color=POP,shape=POP)) + 
+  geom_point()+
+  geom_errorbar(aes(ymin=MIN,ymax=MAX)) +
+  labs(x="Individuals", y = "East cluster ancestry") +
+  geom_vline(xintercept =  c(159.5,362.5), linetype = "longdash") +
+  scale_shape_manual(values = shapes) +
+  theme_bw() +
+  theme(legend.position   = "bottom",
+        legend.title      = element_blank(),
+        legend.background = element_rect(fill="transparent"),
+        legend.text       = element_text(size=11), 
+        axis.text.y       = element_text(size=12), 
+        axis.title.y      = element_text(size=14),
+        axis.title.x      = element_blank(),
+        axis.ticks.x      = element_blank(),
+        axis.text.x       = element_blank()) + 
+  guides(colour = guide_legend(nrow = 2)) 
+```
+
+
