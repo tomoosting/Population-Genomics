@@ -4,11 +4,13 @@ This directory lists all population genomic analyses available in this repositor
 Detailed instructions on how to run each analyses are located in the various subdirectories.
 Example scripts that can be modified to fit the users needs are located in the scripts folder. NOTE: most Rmarkdown scripts require the file 'custom_script.R' to be present in the same directory.
 
+## file types
 Besides a VCF file, we will encounter the following file types
 1. gds
 2. genlight
 3. plink
 4. genepop
+
 These can all be created form a VCF file as they contain the same information (genotypes). Please see the convert scipts to generate the various file formats.
 I highly recommand taking some time to understand how a VCF file is constructed because it will allow you start playing with the data yourself much faster. NOTE: all of the other file formats only contain the FORMAT/GT field stored in a VCF file, representing the individual genotypes for all samples and loci. 
 
@@ -19,10 +21,12 @@ Below is a short summary for each analyses including which datasets, file types,
 ## Analyses included in the repository 
 ### 1. geographic distance (requires GPS coordinates)
 metadata:IND,SITE,LATH,LONG
+
 dataset:(all_sites,qc,outlier,neutral)
+
 filetype:(VCF,gds,genlight,plink,genepop)
-an Rmarkdown script that allows you to estimate the distannce (km) between provided GSP locations (does not require genetic data). This can be either from sample locations, or for indidual samples. You will need this to estimate isolation-by-distance and GEA analysis.
-The output will be a distance matrix.
+
+An Rmarkdown script that allows you to estimate the distannce (km) between provided GSP locations (does not require genetic data). This can be either from sample locations, or for indidual samples. You will need this to estimate isolation-by-distance and GEA analysis. The output will be a distance matrix.
 
 ### 2. Estimate sequencing depth statistics
 filetype: bam files
