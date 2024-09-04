@@ -16,30 +16,38 @@ These analyses generally assume you have have a file named 'sample_information.t
 
 Below is a short summary for each analyses including which datasets, file types, and metadata you need to perform the analyses.
 
-## 1. geographic distance (requires GPS coordinates)
+## Analyses included in the repository 
+### 1. geographic distance (requires GPS coordinates)
 metadata:IND,SITE,LATH,LONG
 dataset:(all_sites,qc,outlier,neutral)
 filetype:(VCF,gds,genlight,plink,genepop)
 an Rmarkdown script that allows you to estimate the distannce (km) between provided GSP locations (does not require genetic data). This can be either from sample locations, or for indidual samples. You will need this to estimate isolation-by-distance and GEA analysis.
 The output will be a distance matrix.
 
-## 2. Estimate sequencing depth statistics
+### 2. Estimate sequencing depth statistics
 filetype: bam files
 Calculate depth statistics to, this is actually run on bam files individual samples. 
 This can be useful to check whether some samples have a much higher coverage, which can create biases when estimating genetic diveristy metrics such as heterozygosity. 
 
-## 3. Heterozygosity estimates
+### 3. Heterozygosity estimates
 Estimate levels of heterozygosity for each sample in your dataset and test for significnat differences between sample locations or populations.
 
-4. Analyse of molecular varience (AMOVA)
-5. Principal component analyses (PCA)
-6. ADMIXTURE
+### 4. Analyse of molecular varience (AMOVA)
+
+### 5. Principal component analyses (PCA)
+
+### 6. ADMIXTURE
 
 ![](figures/snapper_norm_q2_ggplot.png)
 
-7. Pairwise genetic differentiation (FST)
-8. Isolation-by-distance (IBD)
-9. (Relative) migration estmates
-10. Identification of hybrids
-11. Genomescan
-12. Genotype-by-environment analysis (GEA)
+### 7. Pairwise genetic differentiation (FST)
+
+### 8. Isolation-by-distance (IBD)
+
+### 9. (Relative) migration estmates
+
+### 10. Identification of hybrids
+
+### 11. Genomescan
+
+### 12. Genotype-by-environment analysis (GEA)
