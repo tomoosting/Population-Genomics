@@ -39,19 +39,34 @@ Estimate levels of heterozygosity for each sample in your dataset and test for s
 ### 4. Analyse of molecular varience (AMOVA)
 
 ### 5. Principal component analyses (PCA)
+A PCA allows you to test for genetic structure without making an a priori assumption about population structure 
+(in contrast, pairwise-FST requires you to group samples). This makes it an easy first step if you don't have any information on genetic structure.
+
+![](Figures/5.PCA.png)
 
 ### 6. ADMIXTURE
+ADMIXTURE estimates the most likely number op K population present in your dataset. Similar to a PCA, this approach also doesn't make any assumptions about population structure. Ones you have determined the most likely number of populations you can plot the estimated levels of ancestry to each of K populations. Output is visualised using what is commenly referred to as a structure plot. 
 
 ![](Figures/6.ADMIXTURE.png)
 
 ### 7. Pairwise genetic differentiation (FST)
+Estimate the level of genetic differentiation between groups of individuals, usually sample locations or populations. Output is visualised using the heatmap. 
+
+![](Figures/7.PWFST_heatmap.png)
 
 ### 8. Isolation-by-distance (IBD)
+Test if genetic distance is positively correlated with geographic distance. Here we plot genetic distance (liniarised FST) against geogrphic distance and plot a regresion line, and perform a mantal test to test for IBD.
 
-### 9. Migration Rate
+![](Figures/8.IBD_plot.png)
+
+### 9. Migration Rates
+Estimate the rate of migration between populations. I'll present two methods that you can apply using SNP data. 1) BayesAss3 estimates the fraction of a population that comes from another population per generation, 2) divmigrate (Rpackage diveRsity) estimates relative migration rates. 
 
 ### 10. Identification of hybrids
+NewHybrids estimates the probability of individuals being assigned to a genotype frequency class, including first (F1) and second (F2) generation hybrids. 
 
 ### 11. Genomescan (Selectionscan)
+Test for genome regions under selecion by estimating a range of summary statistics (fst, dxy, π) along the genome using a sliding window. Output is visuailsed using a Manhattan plot which 
 
 ### 12. Genotype-by-environment analysis (GEA)
+perform (partial) RDA analyses to test for correlations between genetic variation and environmental factors (e.g. temperature or pH). 
