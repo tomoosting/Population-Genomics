@@ -34,6 +34,9 @@ Estimate levels of heterozygosity for each sample in your dataset and test for s
 4. Analyse of molecular varience (AMOVA)
 5. Principal component analyses (PCA)
 6. ADMIXTURE
+
+![](figures/snapper_norm_q2_ggplot.png)
+
 7. Pairwise genetic differentiation (FST)
 8. Isolation-by-distance (IBD)
 9. (Relative) migration estmates
