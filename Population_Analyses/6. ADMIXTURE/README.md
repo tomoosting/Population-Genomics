@@ -1,3 +1,3 @@
 # Analysis ...
 
-![](../Figures/snapper_norm_q2_ggplot.png)
+![](./../Figures/6.ADMIXTURE.png)

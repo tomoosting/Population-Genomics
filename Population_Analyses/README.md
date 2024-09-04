@@ -42,7 +42,7 @@ Estimate levels of heterozygosity for each sample in your dataset and test for s
 
 ### 6. ADMIXTURE
 
-![](Figures/snapper_norm_q2_ggplot.png)
+![](Figures/6.ADMIXTURE.png)
 
 ### 7. Pairwise genetic differentiation (FST)
 
