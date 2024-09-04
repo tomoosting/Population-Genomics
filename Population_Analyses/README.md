@@ -2,7 +2,7 @@
 
 This directory lists all population genomic analyses available in this repository.
 Detailed instructions on how to run each analyses are located in the various subdirectories.
-Example scripts that can be modified to fit the users needs are located in the scripts folder. NOTE: most Rmarkdown scripts require the file 'custom_script.R' to be present in the same directory.
+Example scripts that can be modified to fit the users needs are located in the scripts folder. NOTE: most Rmarkdown scripts require the file 'custom_Rfunctions.R' to be present in the same directory.
 
 ## file types
 Besides a VCF file, we will encounter the following file types
@@ -42,16 +42,16 @@ Estimate levels of heterozygosity for each sample in your dataset and test for s
 
 ### 6. ADMIXTURE
 
-![](figures/snapper_norm_q2_ggplot.png)
+![](Figures/snapper_norm_q2_ggplot.png)
 
 ### 7. Pairwise genetic differentiation (FST)
 
 ### 8. Isolation-by-distance (IBD)
 
-### 9. (Relative) migration estmates
+### 9. Migration Rate
 
 ### 10. Identification of hybrids
 
-### 11. Genomescan
+### 11. Genomescan (Selectionscan)
 
 ### 12. Genotype-by-environment analysis (GEA)
